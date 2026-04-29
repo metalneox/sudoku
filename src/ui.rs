@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
+use std::time::Duration;
 
 use crate::app::{App, Difficulty};
 
@@ -25,6 +26,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     let offset_y = available_height / 2;
 
     let grid_area = Rect::new(offset_x, offset_y, min_width, min_height);
+
+    let timer_area = Rect::new(offset_x + min_width + 1, offset_y, 12, 5);
 
     let message_area = Rect::new(0, offset_y + min_height + 1, size.width, 3);
 
@@ -50,6 +53,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     );
 
     draw_grid(f, inner_area, app);
+    draw_timer(f, timer_area, app);
     draw_message(f, message_area, app);
 }
 
@@ -145,6 +149,48 @@ fn draw_grid(f: &mut Frame, area: Rect, app: &App) {
             }
         }
     }
+}
+
+fn draw_timer(f: &mut Frame, area: Rect, app: &App) {
+    let elapsed = if app.timer_stopped {
+        app.timer_elapsed
+    } else {
+        app.timer_start.map_or(Duration::ZERO, |t| t.elapsed())
+    };
+
+    let total_secs = elapsed.as_secs();
+    let mins = total_secs / 60;
+    let secs = total_secs % 60;
+    let timer_text = format!("{:02}:{:02}", mins, secs);
+
+    let timer_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Plain)
+        .title(" TIME ")
+        .title_style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .title_alignment(Alignment::Center)
+        .style(Style::default().fg(Color::White));
+
+    let color = if app.timer_stopped {
+        Color::Green
+    } else {
+        Color::Cyan
+    };
+
+    let paragraph = Paragraph::new(timer_text)
+        .block(timer_block)
+        .style(
+            Style::default()
+                .fg(color)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Center);
+
+    f.render_widget(paragraph, area);
 }
 
 fn draw_message(f: &mut Frame, area: Rect, app: &App) {
