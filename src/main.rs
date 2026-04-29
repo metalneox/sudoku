@@ -1,13 +1,13 @@
-pub mod sudoku;
 pub mod app;
+pub mod sudoku;
 pub mod ui;
 
-use std::io;
-use ratatui::{backend::CrosstermBackend, Terminal};
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use ratatui::{Terminal, backend::CrosstermBackend};
+use std::io;
 
 use crate::app::App;
 

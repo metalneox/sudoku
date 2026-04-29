@@ -1,5 +1,5 @@
-use rand::seq::SliceRandom;
 use rand::RngExt;
+use rand::seq::SliceRandom;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Difficulty {

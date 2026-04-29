@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
 };
 use std::time::Duration;
 
@@ -154,6 +154,8 @@ fn draw_grid(f: &mut Frame, area: Rect, app: &App) {
 fn draw_timer(f: &mut Frame, area: Rect, app: &App) {
     let elapsed = if app.timer_stopped {
         app.timer_elapsed
+    } else if app.is_paused {
+        app.timer_elapsed
     } else {
         app.timer_start.map_or(Duration::ZERO, |t| t.elapsed())
     };
@@ -177,20 +179,30 @@ fn draw_timer(f: &mut Frame, area: Rect, app: &App) {
 
     let color = if app.timer_stopped {
         Color::Green
+    } else if app.is_paused {
+        Color::Magenta
     } else {
         Color::Cyan
     };
 
-    let paragraph = Paragraph::new(timer_text)
+    let timer_paragraph = Paragraph::new(timer_text)
         .block(timer_block)
-        .style(
-            Style::default()
-                .fg(color)
-                .add_modifier(Modifier::BOLD),
-        )
+        .style(Style::default().fg(color).add_modifier(Modifier::BOLD))
         .alignment(Alignment::Center);
 
-    f.render_widget(paragraph, area);
+    f.render_widget(timer_paragraph, area);
+
+    if app.timer_stopped && app.sudoku.is_complete() {
+        let done_area = Rect::new(area.x, area.y + 3, area.width, 2);
+        let done_paragraph = Paragraph::new(" Done ")
+            .style(
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .alignment(Alignment::Center);
+        f.render_widget(done_paragraph, done_area);
+    }
 }
 
 fn draw_message(f: &mut Frame, area: Rect, app: &App) {
@@ -227,6 +239,9 @@ fn draw_message(f: &mut Frame, area: Rect, app: &App) {
         Span::raw(" "),
         Span::styled(" ARROWS ", key_style),
         Span::styled(" Move ", desc_style),
+        Span::raw(" "),
+        Span::styled(" P ", key_style),
+        Span::styled(" Pause ", desc_style),
         Span::raw(" "),
         Span::styled(" Z ", key_style),
         Span::styled(" Clear ", desc_style),
