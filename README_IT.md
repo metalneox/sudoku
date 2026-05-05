@@ -34,5 +34,10 @@ cargo run --release
 
 - Frecce per navigare
 - Numeri 1-9 per inserire
+- Z o Backspace per cancellare
+- H per ottenere un suggerimento (riempia la cella, non si può cancellare)
+- P per mettere in pausa/riprendere
+- TAB per cambiare difficoltà
 - N per generare nuovo puzzle
-- Q per uscire
+- Enter per confermare/continuare
+- Q o ESC per uscire

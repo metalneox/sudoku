@@ -31,5 +31,10 @@ cargo run --release
 
 - Arrow keys to navigate
 - Numbers 1-9 to input
+- Z or Backspace to clear
+- H to get a hint (fills cell, cannot be cleared)
+- P to pause/resume
+- TAB to change difficulty
 - N to generate new puzzle
-- Q to quit
+- Enter to confirm/continue
+- Q or ESC to quit
