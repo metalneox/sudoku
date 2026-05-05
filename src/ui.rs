@@ -1,9 +1,9 @@
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
+    Frame,
 };
 use std::time::Duration;
 
@@ -28,6 +28,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let grid_area = Rect::new(offset_x, offset_y, min_width, min_height);
 
     let timer_area = Rect::new(offset_x + min_width + 1, offset_y, 12, 5);
+    let hints_area = Rect::new(offset_x + min_width + 1, offset_y + 6, 12, 3);
 
     let message_area = Rect::new(0, offset_y + min_height + 1, size.width, 3);
 
@@ -54,6 +55,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     draw_grid(f, inner_area, app);
     draw_timer(f, timer_area, app);
+    draw_hints(f, hints_area, app);
     draw_message(f, message_area, app);
 }
 
@@ -107,6 +109,7 @@ fn draw_grid(f: &mut Frame, area: Rect, app: &App) {
 
                     let num = app.sudoku.grid[row][col];
                     let is_fixed = app.sudoku.is_fixed(row, col);
+                    let is_hint = app.sudoku.hint_filled[row][col];
                     let is_cursor = (row, col) == app.cursor;
                     let is_empty = num.is_none();
 
@@ -122,6 +125,11 @@ fn draw_grid(f: &mut Frame, area: Rect, app: &App) {
                             .add_modifier(Modifier::BOLD)
                     } else if is_empty {
                         Style::default().bg(Color::DarkGray).fg(Color::DarkGray)
+                    } else if is_hint {
+                        Style::default()
+                            .bg(Color::Black)
+                            .fg(Color::Red)
+                            .add_modifier(Modifier::BOLD)
                     } else if is_fixed {
                         Style::default()
                             .bg(Color::Black)
@@ -152,9 +160,7 @@ fn draw_grid(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_timer(f: &mut Frame, area: Rect, app: &App) {
-    let elapsed = if app.timer_stopped {
-        app.timer_elapsed
-    } else if app.is_paused {
+    let elapsed = if app.timer_stopped || app.is_paused {
         app.timer_elapsed
     } else {
         app.timer_start.map_or(Duration::ZERO, |t| t.elapsed())
@@ -205,6 +211,41 @@ fn draw_timer(f: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+fn draw_hints(f: &mut Frame, area: Rect, app: &App) {
+    let hint_text = if app.hint_unavailable {
+        "N/A".to_string()
+    } else {
+        format!("{}", app.hints_used)
+    };
+
+    let hints_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Plain)
+        .title(" HINTS ")
+        .title_style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .title_alignment(Alignment::Center)
+        .style(Style::default().fg(Color::White));
+
+    let hints_paragraph = Paragraph::new(hint_text)
+        .block(hints_block)
+        .style(
+            Style::default()
+                .fg(if app.hint_unavailable {
+                    Color::Red
+                } else {
+                    Color::Rgb(128, 128, 128)
+                })
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Center);
+
+    f.render_widget(hints_paragraph, area);
+}
+
 fn draw_message(f: &mut Frame, area: Rect, app: &App) {
     let key_style = Style::default()
         .bg(Color::Cyan)
@@ -246,8 +287,11 @@ fn draw_message(f: &mut Frame, area: Rect, app: &App) {
         Span::styled(" Z ", key_style),
         Span::styled(" Clear ", desc_style),
         Span::raw(" "),
+        Span::styled(" H ", key_style),
+        Span::styled(" Hint ", desc_style),
+        Span::raw(" "),
         Span::styled(" N ", key_style),
-        Span::styled(" New Play ", desc_style),
+        Span::styled(" New ", desc_style),
         Span::raw(" "),
         Span::styled(" ESC ", key_style),
         Span::styled(" Quit ", desc_style),
@@ -277,7 +321,7 @@ fn draw_message(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_min_size_message(f: &mut Frame, size: Rect) {
-    let text = "Finestra troppo piccola.\nIngrandisci per giocare.";
+    let text = "Window too small.\nMaximize to play.";
     let paragraph = Paragraph::new(text)
         .style(Style::default().fg(Color::Yellow))
         .alignment(Alignment::Center);

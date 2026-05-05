@@ -1,4 +1,3 @@
-use rand::RngExt;
 use rand::seq::SliceRandom;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -33,17 +32,155 @@ impl Difficulty {
 pub struct Sudoku {
     pub grid: [[Option<u8>; 9]; 9],
     pub fixed: [[bool; 9]; 9],
+    pub hint_filled: [[bool; 9]; 9],
 }
 
 type SudokuGrid = [[Option<u8>; 9]; 9];
 
-//TODO: Per i livelli Hard e Master, implementare un algoritmo di generazione più sofisticato che garantisca un'unica soluzione e una maggiore difficoltà.
-//TODO: Oppure implementare un resolver prima di darlo al giocatore, e se il resolver impiega troppo tempo, rigenerare un nuovo puzzle.
 impl Sudoku {
+    fn get_candidates(&self, row: usize, col: usize) -> Vec<u8> {
+        let mut candidates: Vec<u8> = (1..10).collect();
+
+        for c in 0..9 {
+            if let Some(n) = self.grid[row][c] {
+                candidates.retain(|&x| x != n);
+            }
+        }
+        for r in 0..9 {
+            if let Some(n) = self.grid[r][col] {
+                candidates.retain(|&x| x != n);
+            }
+        }
+        let start_row = (row / 3) * 3;
+        let start_col = (col / 3) * 3;
+        for r in start_row..start_row + 3 {
+            for c in start_col..start_col + 3 {
+                if let Some(n) = self.grid[r][c] {
+                    candidates.retain(|&x| x != n);
+                }
+            }
+        }
+        candidates
+    }
+
+    fn find_empty(&self) -> Option<(usize, usize)> {
+        for r in 0..9 {
+            for c in 0..9 {
+                if self.grid[r][c].is_none() {
+                    return Some((r, c));
+                }
+            }
+        }
+        None
+    }
+
+    fn solve_with_logic(&mut self) -> bool {
+        let mut changed = true;
+        let mut attempts = 0;
+        let max_attempts = 100;
+
+        while changed && attempts < max_attempts {
+            changed = false;
+            attempts += 1;
+
+            for r in 0..9 {
+                for c in 0..9 {
+                    if self.grid[r][c].is_none() {
+                        let candidates = self.get_candidates(r, c);
+                        if candidates.len() == 1 {
+                            self.grid[r][c] = Some(candidates[0]);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            for region in 0..9 {
+                for num in 1..10 {
+                    let mut count = 0;
+                    let mut pos = (0, 0);
+
+                    for i in 0..9 {
+                        let (r, c) = match region < 3 {
+                            true => (region, i),
+                            false if region < 6 => (i, region - 3),
+                            false => (i / 3 + (region - 6) * 3, i % 3 + (region - 6) * 3),
+                        };
+                        if self.grid[r][c].is_none() && self.get_candidates(r, c).contains(&num) {
+                            count += 1;
+                            pos = (r, c);
+                        }
+                    }
+
+                    if count == 1 {
+                        self.grid[pos.0][pos.1] = Some(num);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        self.find_empty().is_none()
+    }
+
+    fn solve_with_backtracking(&mut self) -> bool {
+        if let Some((row, col)) = self.find_empty() {
+            let candidates = self.get_candidates(row, col);
+            for num in candidates {
+                self.grid[row][col] = Some(num);
+                if self.solve_with_backtracking() {
+                    return true;
+                }
+                self.grid[row][col] = None;
+            }
+            return false;
+        }
+        true
+    }
+
+    fn count_solutions(&mut self, limit: usize, depth: usize) -> usize {
+        if depth > 200 {
+            return limit;
+        }
+        if let Some((row, col)) = self.find_empty() {
+            let candidates = self.get_candidates(row, col);
+            let mut count = 0;
+            for num in candidates {
+                self.grid[row][col] = Some(num);
+                count += self.count_solutions(limit, depth + 1);
+                if count >= limit {
+                    self.grid[row][col] = None;
+                    return count;
+                }
+                self.grid[row][col] = None;
+            }
+            return count;
+        }
+        1
+    }
+
+    pub fn is_solvable(&self) -> bool {
+        let mut test_grid = self.clone();
+        if test_grid.solve_with_logic() {
+            return true;
+        }
+        test_grid.grid = self.grid;
+        test_grid.solve_with_backtracking()
+    }
+
+    fn has_unique_solution(&self) -> bool {
+        let mut test_sudoku = Sudoku::new();
+        test_sudoku.grid = self.grid;
+        test_sudoku.solve_with_logic();
+        test_sudoku.grid = self.grid;
+        test_sudoku.count_solutions(2, 0) == 1
+    }
+
     pub fn new() -> Self {
         Sudoku {
             grid: [[None; 9]; 9],
             fixed: [[false; 9]; 9],
+            hint_filled: [[false; 9]; 9],
         }
     }
 
@@ -99,7 +236,7 @@ impl Sudoku {
         true
     }
 
-    pub fn generation(&self) -> SudokuGrid {
+    pub fn generation() -> SudokuGrid {
         let mut puzzle: SudokuGrid = [[None; 9]; 9];
 
         Self::fill_grid(&mut puzzle);
@@ -108,23 +245,42 @@ impl Sudoku {
 
     pub fn create_puzzle(mut puzzle: SudokuGrid, difficulty: Difficulty) -> SudokuGrid {
         let mut rng = rand::rng();
-        let mut removed = 0;
         let target = difficulty.get_remove_count();
 
-        while removed < target {
-            let r = rng.random_range(0..9);
-            let c = rng.random_range(0..9);
+        let mut cells: Vec<(usize, usize)> =
+            (0..9).flat_map(|r| (0..9).map(move |c| (r, c))).collect();
+        cells.shuffle(&mut rng);
+
+        let mut removed = 0;
+        let mut checked = 0;
+        let max_check = 200;
+
+        for (r, c) in cells {
+            if removed >= target || checked >= max_check {
+                break;
+            }
 
             if puzzle[r][c].is_some() {
+                checked += 1;
+                let backup = puzzle[r][c];
                 puzzle[r][c] = None;
-                removed += 1;
+
+                let mut test_sudoku = Sudoku::new();
+                test_sudoku.grid = puzzle;
+
+                if test_sudoku.has_unique_solution() {
+                    removed += 1;
+                } else {
+                    puzzle[r][c] = backup;
+                }
             }
         }
+
         puzzle
     }
 
     pub fn set(&mut self, row: usize, col: usize, num: u8) -> bool {
-        if self.fixed[row][col] {
+        if self.fixed[row][col] || self.hint_filled[row][col] {
             return false;
         }
         if self.is_valid(row, col, num) {
@@ -135,8 +291,21 @@ impl Sudoku {
         }
     }
 
+    pub fn set_hint(&mut self, row: usize, col: usize, num: u8) -> bool {
+        if self.fixed[row][col] {
+            return false;
+        }
+        if self.is_valid(row, col, num) {
+            self.grid[row][col] = Some(num);
+            self.hint_filled[row][col] = true;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn clear(&mut self, row: usize, col: usize) {
-        if !self.fixed[row][col] {
+        if !self.fixed[row][col] && !self.hint_filled[row][col] {
             self.grid[row][col] = None;
         }
     }
@@ -151,14 +320,40 @@ impl Sudoku {
             .all(|row| row.iter().all(|cell| cell.is_some()))
     }
 
+    pub fn get_hint(&self, row: usize, col: usize) -> Option<u8> {
+        if self.grid[row][col].is_some() {
+            return None;
+        }
+        let candidates = self.get_candidates(row, col);
+        if candidates.len() == 1 {
+            Some(candidates[0])
+        } else {
+            None
+        }
+    }
+
     pub fn generate_puzzle(difficulty: Option<Difficulty>) -> Self {
-        let mut sudoku = Sudoku::new();
-
-        sudoku.grid = sudoku.generation();
-
         let selected_diff = difficulty.unwrap_or(Difficulty::Easy);
+        let mut sudoku;
+        let mut attempts = 0;
+        let max_attempts = 100;
 
-        sudoku.grid = Sudoku::create_puzzle(sudoku.grid, selected_diff);
+        loop {
+            sudoku = Sudoku::new();
+            sudoku.grid = Self::generation();
+            sudoku.grid = Self::create_puzzle(sudoku.grid, selected_diff);
+
+            if sudoku.is_solvable() {
+                break;
+            }
+
+            attempts += 1;
+            if attempts >= max_attempts {
+                sudoku.grid = Self::generation();
+                sudoku.grid = Self::create_puzzle(sudoku.grid, Difficulty::Easy);
+                break;
+            }
+        }
 
         for r in 0..9 {
             for c in 0..9 {

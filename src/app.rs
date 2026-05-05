@@ -10,7 +10,7 @@ pub use crate::sudoku::Difficulty;
 
 pub struct App {
     pub sudoku: Sudoku,
-    pub cursor: (usize, usize), // (row, col)
+    pub cursor: (usize, usize),
     pub should_quit: bool,
     pub message: Option<String>,
     pub difficulty: Difficulty,
@@ -18,6 +18,8 @@ pub struct App {
     pub timer_elapsed: Duration,
     pub timer_stopped: bool,
     pub is_paused: bool,
+    pub hints_used: u32,
+    pub hint_unavailable: bool,
 }
 
 impl Default for App {
@@ -33,14 +35,22 @@ impl Default for App {
             timer_elapsed: Duration::ZERO,
             timer_stopped: false,
             is_paused: false,
+            hints_used: 0,
+            hint_unavailable: false,
         }
     }
 }
 
 impl App {
-    pub fn new() -> Self {
-        let app: App = App::default();
-        app
+    fn reset_game(&mut self) {
+        self.sudoku = Sudoku::generate_puzzle(Some(self.difficulty));
+        self.cursor = (0, 0);
+        self.hints_used = 0;
+        self.hint_unavailable = false;
+        self.timer_start = Some(Instant::now());
+        self.timer_elapsed = Duration::ZERO;
+        self.timer_stopped = false;
+        self.is_paused = false;
     }
 
     pub fn run(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
@@ -63,17 +73,12 @@ impl App {
                                 self.message = None;
                             }
                     }
-                    KeyCode::Up if self.cursor.0 > 0 && !self.is_paused => self.cursor.0 -= 1,
-                    KeyCode::Down if self.cursor.0 < 8 && !self.is_paused => self.cursor.0 += 1,
-                    KeyCode::Left if self.cursor.1 > 0 && !self.is_paused => self.cursor.1 -= 1,
-                    KeyCode::Right if self.cursor.1 < 8 && !self.is_paused => self.cursor.1 += 1,
+                    KeyCode::Up if self.cursor.0 > 0 && !self.is_paused => { self.cursor.0 -= 1; self.hint_unavailable = false; },
+                    KeyCode::Down if self.cursor.0 < 8 && !self.is_paused => { self.cursor.0 += 1; self.hint_unavailable = false; },
+                    KeyCode::Left if self.cursor.1 > 0 && !self.is_paused => { self.cursor.1 -= 1; self.hint_unavailable = false; },
+                    KeyCode::Right if self.cursor.1 < 8 && !self.is_paused => { self.cursor.1 += 1; self.hint_unavailable = false; },
                     KeyCode::Char('n') => {
-                        self.sudoku = Sudoku::generate_puzzle(Some(self.difficulty));
-                        self.cursor = (0, 0);
-                        self.timer_start = Some(Instant::now());
-                        self.timer_elapsed = Duration::ZERO;
-                        self.timer_stopped = false;
-                        self.is_paused = false;
+                        self.reset_game();
                         self.message = None;
                     }
                     KeyCode::Char(c) if c.is_ascii_digit() && c != '0' && !self.is_paused => {
@@ -86,14 +91,17 @@ impl App {
                     KeyCode::Tab => {
                         self.difficulty = self.difficulty.next();
                     }
+                    KeyCode::Char('h') | KeyCode::Char('H') if !self.is_paused => {
+                        if let Some(hint) = self.sudoku.get_hint(self.cursor.0, self.cursor.1) {
+                            self.sudoku.set_hint(self.cursor.0, self.cursor.1, hint);
+                            self.hints_used += 1;
+                        } else {
+                            self.hint_unavailable = true;
+                        }
+                    }
                     KeyCode::Enter if self.message.is_some() => {
-                        self.sudoku = Sudoku::generate_puzzle(Some(self.difficulty));
-                        self.cursor = (0, 0);
+                        self.reset_game();
                         self.message = None;
-                        self.timer_start = Some(Instant::now());
-                        self.timer_elapsed = Duration::ZERO;
-                        self.timer_stopped = false;
-                        self.is_paused = false;
                     }
                     KeyCode::Esc => {
                         self.should_quit = true;
